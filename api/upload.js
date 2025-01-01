@@ -1,81 +1,81 @@
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs').promises;
+import multer, { memoryStorage } from 'multer';
+import { put } from '@vercel/blob';
 
-const IMAGES_FILE = path.join(process.cwd(), 'images.json');
-
-// Configure storage for uploaded images
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = path.join(process.cwd(), 'uploads');
-    fs.mkdir(uploadPath, { recursive: true })
-      .then(() => cb(null, uploadPath))
-      .catch(cb);
-  },
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
-});
-
+const storage = memoryStorage();
 const upload = multer({
   storage,
   limits: { fileSize: 30 * 1024 * 1024 }, // Max file size 30MB
 });
 
-// Multer middleware to handle multiple file uploads
 const multerMiddleware = upload.array('images', 10); // Maximum 10 files
 
-async function readImages() {
-  try {
-    const data = await fs.readFile(IMAGES_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      return [];
-    }
-    throw error;
-  }
-}
+export default async (req, res) => {
+  console.log(`Received ${req.method} request to ${req.url}`);
 
-async function writeImages(images) {
-  await fs.writeFile(IMAGES_FILE, JSON.stringify(images, null, 2));
-}
-
-module.exports = async (req, res) => {
   if (req.method === 'POST') {
     try {
+      // Run the multerMiddleware to handle file upload
       await new Promise((resolve, reject) => {
         multerMiddleware(req, res, (err) => {
-          if (err) reject(err);
-          else resolve();
+          if (err) reject(err); // Reject on error
+          else resolve(); // Resolve when done
         });
       });
 
-      // If no files are uploaded, return an error
+      // Check if files are uploaded
       if (!req.files || req.files.length === 0) {
         return res.status(400).json({ message: 'No files were uploaded.' });
       }
 
-      const uploadedImages = req.files.map((file) => ({
-        id: Date.now() + Math.random(), // Unique ID for each image
-        fileName: file.filename,
-        filePath: `uploads/${file.filename}`,
-        enabled: true,
-      }));
+      // Process each uploaded file
+      const uploadPromises = req.files.map(async (file) => {
+        try {
+          // Upload to vercel blob storage and get the file URL
+          const blob = await put(file.originalname, file.buffer, {
+            access: 'public',
+          });
 
-      const existingImages = await readImages();
-      const updatedImages = [...existingImages, ...uploadedImages];
-      await writeImages(updatedImages);
+          // Return the uploaded file data
+          return {
+            id: Date.now() + Math.random(),
+            fileName: file.originalname,
+            filePath: blob.url, // URL returned by @vercel/blob
+            enabled: true,
+          };
+        } catch (error) {
+          // Catch any errors related to file upload to vercel blob
+          console.error('Error uploading file:', error);
+          return null; // Return null if the upload fails
+        }
+      });
 
-      res.status(200).json(updatedImages);
+      // Wait for all uploads to complete
+      const uploadedImages = await Promise.all(uploadPromises);
+
+      // Filter out any failed uploads (null values)
+      const validImages = uploadedImages.filter((image) => image !== null);
+
+      // If no valid images were uploaded, return an error
+      if (validImages.length === 0) {
+        return res.status(500).json({ message: 'Failed to upload images.' });
+      }
+
+      // Return the successfully uploaded images
+      return res.status(200).json(validImages);
     } catch (error) {
+      console.error('Error in upload API:', error);
+      
+      // Handle specific error scenarios like file size limits
       if (error.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({ message: 'File size exceeds the 30MB limit per image.' });
       }
-      console.error('Error in upload API:', error);
-      return res.status(500).json({ message: 'Internal server error' });
+      
+      // Return a generic server error message
+      return res.status(500).json({ message: 'Internal server error', error: error.message });
     }
   } else {
+    // If the method is not POST, return 405 Method Not Allowed
     res.setHeader('Allow', ['POST']);
-    res.status(405).json({ message: `Method ${req.method} Not Allowed` });
+    return res.status(405).json({ message: `Method ${req.method} Not Allowed` });
   }
 };
-
