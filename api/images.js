@@ -1,67 +1,48 @@
-const fs = require('fs').promises;
-const path = require('path');
+// api/image.js
+let images = [];
 
-const IMAGES_FILE = path.join(process.cwd(), 'images.json');
-
-async function readImages() {
+export default async (req, res) => {
   try {
-    const data = await fs.readFile(IMAGES_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      return [];
-    }
-    throw error;
-  }
-}
+    console.log(`Received ${req.method} request to ${req.url}`);
 
-async function writeImages(images) {
-  await fs.writeFile(IMAGES_FILE, JSON.stringify(images, null, 2));
-}
-
-module.exports = async (req, res) => {
-  try {
     // GET: Fetch all images
     if (req.method === 'GET') {
-      const images = await readImages();
       return res.status(200).json(images);
     }
 
     // PUT: Toggle enable/disable status of an image
     if (req.method === 'PUT') {
-      const { id } = req.params;
+      const { id } = req.query;
       if (!id) {
         return res.status(400).json({ message: 'Image ID is required' });
       }
 
-      const images = await readImages();
       const imageIndex = images.findIndex((img) => img.id == id);
 
       if (imageIndex === -1) {
         return res.status(404).json({ message: 'Image not found' });
       }
 
+      // Toggle the enabled status of the image
       images[imageIndex].enabled = !images[imageIndex].enabled;
-      await writeImages(images);
-      return res.status(200).json(images);
+      return res.status(200).json(images[imageIndex]);
     }
 
     // DELETE: Remove an image
     if (req.method === 'DELETE') {
-      const { id } = req.params;
+      const { id } = req.query;
       if (!id) {
         return res.status(400).json({ message: 'Image ID is required' });
       }
 
-      const images = await readImages();
-      const updatedImages = images.filter((img) => img.id != id);
+      const initialLength = images.length;
+      images = images.filter((img) => img.id != id);
 
-      if (images.length === updatedImages.length) {
+      if (images.length === initialLength) {
         return res.status(404).json({ message: 'Image not found' });
       }
 
-      await writeImages(updatedImages);
-      return res.status(200).json(updatedImages);
+      return res.status(200).json({ message: 'Image deleted successfully' });
     }
 
     // Method not allowed
@@ -69,7 +50,6 @@ module.exports = async (req, res) => {
     return res.status(405).json({ message: `Method ${req.method} Not Allowed` });
   } catch (error) {
     console.error('Error in image API:', error);
-    return res.status(500).json({ message: 'Internal server error' });
+    return res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 };
-
