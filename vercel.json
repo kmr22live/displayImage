@@ -1,19 +1,12 @@
 {
-    "version": 2,
-    "builds": [
-      {
-        "src": "server.js",
-        "use": "@vercel/node"
-      }
-    ],
-    "routes": [
-      {
-        "src": "/(.*)",
-        "dest": "/server.js"
-      }
-    ],
-    "env": {
-      "NODE_ENV": "production"
-    }
-  }
-  
+  "version": 2,
+  "builds": [
+    { "src": "api/*.js", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/api/upload", "dest": "/api/upload.js" },
+    { "src": "/api/images", "dest": "/api/image.js" },
+    { "src": "/api/images/(.*)", "dest": "/api/image.js" }
+  ]
+}
+
