@@ -1,0 +1,14 @@
+{
+  "name": "image-upload",
+  "version": "1.0.0",
+  "description": "Image upload project with Vercel deployment",
+  "main": "index.js",
+  "scripts": {
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "multer": "^1.4.4",
+    "express": "^4.17.1",
+    "cors": "^2.8.5"
+  }
+}
